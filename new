@@ -1,0 +1,150 @@
+import java.util.Scanner;
+import java.util.Timer;
+import java.util.TimerTask;
+
+public class ConsolePomodoroTimer {
+    private static int workDuration; // Work duration in milliseconds
+    private static int shortBreakDuration; // Short break duration in milliseconds
+    private static int longBreakDuration; // Long break duration in milliseconds
+    private static final int CYCLES_BEFORE_LONG_BREAK = 4; // Cycles before long break
+
+    private static int cycleCount = 0;
+    private static Timer timer = new Timer();
+    private static boolean focusInterrupted = false;
+    private static int elapsedSeconds = 0;
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.println("Pomodoro Timer Console Application");
+
+        // Get user input for durations
+        System.out.print("Enter work duration in minutes: ");
+        workDuration = scanner.nextInt() * 60 * 1000; // Convert to milliseconds
+
+        System.out.print("Enter short break duration in minutes: ");
+        shortBreakDuration = scanner.nextInt() * 60 * 1000; // Convert to milliseconds
+
+        System.out.print("Enter long break duration in minutes: ");
+        longBreakDuration = scanner.nextInt() * 60 * 1000; // Convert to milliseconds
+
+        System.out.println("Press Enter to start the Pomodoro timer.");
+        scanner.nextLine(); // Consume newline left by nextInt()
+        scanner.nextLine(); // Wait for user input to start
+
+        // Start a thread to handle user commands
+        new Thread(() -> {
+            while (true) {
+                System.out.println("Type 'end' to interrupt the current focus period.");
+                String command = scanner.nextLine();
+                if ("end".equalsIgnoreCase(command)) {
+                    focusInterrupted = true;
+                    System.out.println("Focus period interrupted. Ending current session.");
+                    timer.cancel(); // Cancel the current timer tasks
+                    return;
+                }
+            }
+        }).start();
+
+        startPomodoroCycle();
+    }
+
+    private static void startPomodoroCycle() {
+        if (focusInterrupted) {
+            return; // Exit if the focus was interrupted
+        }
+
+        if (cycleCount < CYCLES_BEFORE_LONG_BREAK) {
+            startWorkPeriod();
+        } else {
+            startLongBreak();
+        }
+    }
+
+    private static void startWorkPeriod() {
+        System.out.println("Work period started. Focus for " + (workDuration / 60000) + " minutes!");
+
+        // Start the live timer thread to show elapsed time
+        startLiveTimerThread(workDuration);
+
+        // Schedule notifications every 1 minute during the work period
+        for (int i = 1; i < (workDuration / 60000); i++) {
+            TimerTask notificationTask = createNotificationTask(workDuration, i);
+            timer.schedule(notificationTask, i * 60 * 1000);
+        }
+
+        // TimerTask for the end of the work period
+        TimerTask workTask = new TimerTask() {
+            @Override
+            public void run() {
+                if (!focusInterrupted) {
+                    System.out.println("\nWork period ended. Take a short break.");
+                    elapsedSeconds = 0; // Reset elapsed seconds for the next cycle
+                    startShortBreak();
+                }
+            }
+        };
+        timer.schedule(workTask, workDuration);
+    }
+
+    // Create a task to show the remaining time notification
+    private static TimerTask createNotificationTask(int workDuration, int elapsedMinutes) {
+        return new TimerTask() {
+            @Override
+            public void run() {
+                if (!focusInterrupted) {
+                    int remainingMinutes = (workDuration / 60000) - elapsedMinutes;
+                    System.out.println("\nNotification: " + remainingMinutes + " minutes left in your current work period.");
+                }
+            }
+        };
+    }
+
+    private static void startShortBreak() {
+        System.out.println("Short break started. Relax for " + (shortBreakDuration / 60000) + " minutes.");
+        TimerTask breakTask = new TimerTask() {
+            @Override
+            public void run() {
+                if (!focusInterrupted) {
+                    System.out.println("Short break ended. Get ready for the next work period.");
+                    cycleCount++;
+                    startPomodoroCycle();
+                }
+            }
+        };
+        timer.schedule(breakTask, shortBreakDuration);
+    }
+
+    private static void startLongBreak() {
+        System.out.println("Long break started. Relax for " + (longBreakDuration / 60000) + " minutes!");
+        TimerTask longBreakTask = new TimerTask() {
+            @Override
+            public void run() {
+                if (!focusInterrupted) {
+                    System.out.println("Long break ended. Starting a new cycle.");
+                    cycleCount = 0; // Reset cycle count
+                    startPomodoroCycle();
+                }
+            }
+        };
+        timer.schedule(longBreakTask, longBreakDuration);
+    }
+
+    private static void startLiveTimerThread(int totalDuration) {
+        new Thread(() -> {
+            elapsedSeconds = 0;
+            while (elapsedSeconds < totalDuration / 1000 && !focusInterrupted) {
+                try {
+                    Thread.sleep(1000); // Sleep for 1 second
+                    elapsedSeconds++;
+                    int minutes = elapsedSeconds / 60;
+                    int seconds = elapsedSeconds % 60;
+                    System.out.printf("\rElapsed Time: %02d:%02d", minutes, seconds);
+                } catch (InterruptedException e) {
+                    System.out.println("Live timer thread interrupted.");
+                }
+            }
+            System.out.println(); // Move to the next line after the timer finishes
+        }).start();
+    }
+}
